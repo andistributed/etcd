@@ -389,8 +389,8 @@ func (etcd *Etcd) TxKeepaliveWithTTL(key, value string, ttl int64) (txResponse *
 	return
 }
 
-// transfer from to with value
-func (etcd *Etcd) transfer(from string, to string, value string) (success bool, err error) {
+// Transfer transfer from to with value
+func (etcd *Etcd) Transfer(from string, to string, value string) (success bool, err error) {
 	var txnResponse *clientv3.TxnResponse
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
