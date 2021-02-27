@@ -24,6 +24,21 @@ type Lock struct {
 }
 
 // New 初始化一把锁
+// usage:
+// // 初始化配置
+// config = clientv3.Config{
+// 	Endpoints: []string{"127.0.0.1:2379"}, // 集群地址
+// 	DialTimeout: 5 * time.Second, // 连接超时
+// }
+// // 建立连接
+// if client, err = clientv3.New(config); err != nil {
+// 	return
+// }
+// // 得到KV和Lease的API子集
+// kv = clientv3.NewKV(client)
+// lease = clientv3.NewLease(client)
+// // watcher = clientv3.NewWatcher(client)
+// New(jobName, kv, lease)
 func New(jobName string, kv clientv3.KV, lease clientv3.Lease, dirNames ...string) (jobLock *Lock) {
 	jobLock = &Lock{
 		kv:      kv,
