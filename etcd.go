@@ -2,9 +2,9 @@ package etcd
 
 import (
 	"context"
-	"log"
 	"time"
 
+	"github.com/admpub/log"
 	"github.com/andistributed/etcd/etcdconfig"
 	"github.com/andistributed/etcd/etcdevent"
 	"github.com/andistributed/etcd/etcdresponse"
@@ -224,7 +224,7 @@ func (etcd *Etcd) Watch(key string) (keyChangeEventResponse *etcdresponse.WatchK
 		}
 
 	End:
-		log.Println("the watcher lose for key:", key)
+		log.Warn("the watcher lose for key: ", key)
 	}()
 
 	return
@@ -232,20 +232,14 @@ func (etcd *Etcd) Watch(key string) (keyChangeEventResponse *etcdresponse.WatchK
 
 // WatchWithPrefixKey watch with prefix key
 func (etcd *Etcd) WatchWithPrefixKey(prefixKey string) (keyChangeEventResponse *etcdresponse.WatchKeyChangeResponse) {
-
 	watcher := clientv3.NewWatcher(etcd.client)
-
 	watchChans := watcher.Watch(context.Background(), prefixKey, clientv3.WithPrefix())
-
 	keyChangeEventResponse = &etcdresponse.WatchKeyChangeResponse{
 		Event:   make(chan *etcdevent.KeyChangeEvent, 250),
 		Watcher: watcher,
 	}
-
 	go func() {
-
 		for ch := range watchChans {
-
 			if ch.Canceled {
 				goto End
 			}
@@ -255,7 +249,7 @@ func (etcd *Etcd) WatchWithPrefixKey(prefixKey string) (keyChangeEventResponse *
 		}
 
 	End:
-		log.Println("the watcher lose for prefixKey:", prefixKey)
+		log.Warn("the watcher lose for prefixKey: ", prefixKey)
 	}()
 
 	return
@@ -341,17 +335,14 @@ func (etcd *Etcd) TxKeepaliveWithTTL(key, value string, ttl int64) (txResponse *
 	}
 
 	go func() {
-
 		for ch := range aliveResponses {
-
 			if ch == nil {
 				goto End
 			}
-
 		}
 
 	End:
-		log.Printf("the tx keepalive has lose key:%s", key)
+		log.Warnf("the tx keepalive has lose key: %s", key)
 	}()
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
@@ -376,6 +367,78 @@ func (etcd *Etcd) TxKeepaliveWithTTL(key, value string, ttl int64) (txResponse *
 	}
 	if txnResponse.Succeeded {
 		txResponse.Success = true
+	} else {
+		// close the lease
+		_ = lease.Close()
+		txResponse.Success = false
+		if v, err = etcd.Get(key); err != nil {
+			return
+		}
+		txResponse.Key = key
+		txResponse.Value = string(v)
+	}
+	return
+}
+
+func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txResponse *etcdresponse.TxResponseWithChan, err error) {
+	var (
+		txnResponse    *clientv3.TxnResponse
+		leaseID        clientv3.LeaseID
+		aliveResponses <-chan *clientv3.LeaseKeepAliveResponse
+		v              []byte
+	)
+	lease := clientv3.NewLease(etcd.client)
+
+	grantResponse, err := lease.Grant(context.Background(), ttl)
+
+	leaseID = grantResponse.ID
+
+	if aliveResponses, err = lease.KeepAlive(context.Background(), leaseID); err != nil {
+		return
+	}
+
+	txResponse = &etcdresponse.TxResponseWithChan{
+		LeaseID: leaseID,
+		Lease:   lease,
+	}
+
+	go func() {
+
+		for ch := range aliveResponses {
+
+			if ch == nil {
+				goto End
+			}
+
+		}
+
+	End:
+		log.Warnf("the tx keepalive has lose key <-----> %s", key)
+		if txResponse.StateChan != nil {
+			txResponse.StateChan <- false
+		}
+
+	}()
+
+	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
+	defer cancelFunc()
+
+	txn := etcd.client.Txn(ctx)
+	txnResponse, err = txn.If(
+		clientv3.Compare(clientv3.Version(key), "=", 0)).
+		Then(clientv3.OpPut(key, value, clientv3.WithLease(leaseID))).
+		Else(
+			clientv3.OpGet(key),
+		).Commit()
+
+	if err != nil {
+		_ = lease.Close()
+		return
+	}
+
+	if txnResponse.Succeeded {
+		txResponse.Success = true
+		txResponse.StateChan = make(chan bool, 0)
 	} else {
 		// close the lease
 		_ = lease.Close()
