@@ -3,7 +3,7 @@ module github.com/andistributed/etcd
 go 1.16
 
 require (
-	github.com/admpub/log v0.2.1
+	github.com/admpub/log v0.2.2
 	github.com/coreos/go-systemd/v22 v22.3.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.0-alpha.0
