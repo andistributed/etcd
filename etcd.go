@@ -8,8 +8,8 @@ import (
 	"github.com/andistributed/etcd/etcdconfig"
 	"github.com/andistributed/etcd/etcdevent"
 	"github.com/andistributed/etcd/etcdresponse"
-	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/mvcc/mvccpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // Etcd is etcd wrap

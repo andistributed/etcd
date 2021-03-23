@@ -2,6 +2,8 @@ module github.com/andistributed/etcd
 
 go 1.16
 
+replace go.etcd.io/etcd => github.com/etcd-io/etcd v3.4.15
+
 require (
 	github.com/admpub/log v0.2.0
 	github.com/coreos/bbolt v1.3.3 // indirect

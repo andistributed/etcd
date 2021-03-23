@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/andistributed/etcd/etcdevent"
-	"github.com/coreos/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // TxResponse 事务响应
