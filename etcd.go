@@ -8,7 +8,7 @@ import (
 	"github.com/andistributed/etcd/etcdconfig"
 	"github.com/andistributed/etcd/etcdevent"
 	"github.com/andistributed/etcd/etcdresponse"
-	"github.com/coreos/etcd/mvcc/mvccpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
