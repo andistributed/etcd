@@ -35,14 +35,12 @@ func New(endpoints []string, timeout time.Duration, opts ...etcdconfig.Configer)
 	if client, err = clientv3.New(conf); err != nil {
 		return
 	}
-
 	etcd = &Etcd{
 		endpoints: endpoints,
 		client:    client,
 		kv:        clientv3.NewKV(client),
 		timeout:   timeout,
 	}
-
 	return
 }
 
@@ -162,7 +160,6 @@ func (etcd *Etcd) Update(key, value, oldValue string) (success bool, err error) 
 	defer cancelFunc()
 
 	txn := etcd.client.Txn(ctx)
-
 	txnResponse, err = txn.If(clientv3.Compare(clientv3.Value(key), "=", oldValue)).
 		Then(clientv3.OpPut(key, value)).
 		Commit()
@@ -211,11 +208,8 @@ func (etcd *Etcd) Watch(key string) (keyChangeEventResponse *etcdresponse.WatchK
 	}
 
 	go func() {
-
 		for ch := range watchChans {
-
 			if ch.Canceled {
-
 				goto End
 			}
 			for _, event := range ch.Events {
@@ -386,11 +380,13 @@ func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txRes
 		leaseID        clientv3.LeaseID
 		aliveResponses <-chan *clientv3.LeaseKeepAliveResponse
 		v              []byte
+		grantResponse  *clientv3.LeaseGrantResponse
 	)
 	lease := clientv3.NewLease(etcd.client)
-
-	grantResponse, err := lease.Grant(context.Background(), ttl)
-
+	grantResponse, err = lease.Grant(context.Background(), ttl)
+	if err != nil {
+		return
+	}
 	leaseID = grantResponse.ID
 
 	if aliveResponses, err = lease.KeepAlive(context.Background(), leaseID); err != nil {
@@ -403,13 +399,10 @@ func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txRes
 	}
 
 	go func() {
-
 		for ch := range aliveResponses {
-
 			if ch == nil {
 				goto End
 			}
-
 		}
 
 	End:
@@ -417,7 +410,6 @@ func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txRes
 		if txResponse.StateChan != nil {
 			txResponse.StateChan <- false
 		}
-
 	}()
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
@@ -438,7 +430,7 @@ func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txRes
 
 	if txnResponse.Succeeded {
 		txResponse.Success = true
-		txResponse.StateChan = make(chan bool, 0)
+		txResponse.StateChan = make(chan bool)
 	} else {
 		// close the lease
 		_ = lease.Close()
@@ -460,7 +452,6 @@ func (etcd *Etcd) Transfer(from string, to string, value string) (success bool, 
 	defer cancelFunc()
 
 	txn := etcd.client.Txn(ctx)
-
 	txnResponse, err = txn.If(
 		clientv3.Compare(clientv3.Value(from), "=", value)).
 		Then(
