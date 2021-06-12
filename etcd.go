@@ -2,7 +2,6 @@ package etcd
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/admpub/log"
@@ -170,7 +169,7 @@ func (etcd *Etcd) GetWithFromKeyChunk(fromKey string, chunkSize int64, total int
 	var getResponse *clientv3.GetResponse
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
 	defer cancelFunc()
-	fmt.Println(`___________________________`, total)
+
 	limit := chunkSize
 	if limit > total {
 		limit = total
