@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/admpub/log v0.3.1
 	github.com/mattn/go-isatty v0.0.13 // indirect
+	github.com/stretchr/testify v1.7.0
 	go.etcd.io/etcd/api/v3 v3.5.0-rc.1
 	go.etcd.io/etcd/client/v3 v3.5.0-rc.1
 	go.uber.org/atomic v1.8.0 // indirect

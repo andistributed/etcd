@@ -2,6 +2,7 @@ package etcd
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/admpub/log"
@@ -50,7 +51,7 @@ func (etcd *Etcd) Get(key string) (value []byte, err error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
 	defer cancelFunc()
 
-	if getResponse, err = etcd.kv.Get(ctx, key); err != nil {
+	if getResponse, err = etcd.kv.Get(ctx, key, clientv3.WithLimit(1)); err != nil {
 		return
 	}
 
@@ -73,12 +74,13 @@ func (etcd *Etcd) GetWithPrefixKey(prefixKey string) (keys [][]byte, values [][]
 		return
 	}
 
-	if len(getResponse.Kvs) == 0 {
+	size := len(getResponse.Kvs)
+	if size == 0 {
 		return
 	}
 
-	keys = make([][]byte, len(getResponse.Kvs))
-	values = make([][]byte, len(getResponse.Kvs))
+	keys = make([][]byte, size)
+	values = make([][]byte, size)
 
 	for i, v := range getResponse.Kvs {
 		keys[i] = v.Key
@@ -98,12 +100,13 @@ func (etcd *Etcd) GetWithPrefixKeyLimit(prefixKey string, limit int64) (keys [][
 		return
 	}
 
-	if len(getResponse.Kvs) == 0 {
+	size := len(getResponse.Kvs)
+	if size == 0 {
 		return
 	}
 
-	keys = make([][]byte, len(getResponse.Kvs))
-	values = make([][]byte, len(getResponse.Kvs))
+	keys = make([][]byte, size)
+	values = make([][]byte, size)
 
 	for i, v := range getResponse.Kvs {
 		keys[i] = v.Key
@@ -111,6 +114,105 @@ func (etcd *Etcd) GetWithPrefixKeyLimit(prefixKey string, limit int64) (keys [][
 	}
 
 	return
+}
+
+func (etcd *Etcd) GetWithPrefixKeyChunk(prefixKey string, chunkSize int64, callback func(key, value []byte) error, sorts ...clientv3.SortOrder) (err error) {
+	var getResponse *clientv3.GetResponse
+	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
+	defer cancelFunc()
+
+	sort := clientv3.SortAscend
+	if len(sorts) > 0 {
+		sort = sorts[0]
+	}
+	if sort != clientv3.SortAscend {
+		panic("etcd.GetWithPrefixKeyChunk only supports clientv3.SortAscend")
+	}
+	if getResponse, err = etcd.kv.Get(ctx, prefixKey,
+		clientv3.WithPrefix(),
+		clientv3.WithSort(clientv3.SortByKey, sort),
+		clientv3.WithLimit(chunkSize)); err != nil {
+		return
+	}
+
+	size := len(getResponse.Kvs)
+	if size == 0 {
+		return
+	}
+	cursor := *getResponse.Kvs[size-1]
+	if getResponse.More {
+		getResponse.Kvs = getResponse.Kvs[0 : size-1]
+	}
+
+	for _, v := range getResponse.Kvs {
+		if err = callback(v.Key, v.Value); err != nil {
+			return err
+		}
+	}
+
+	if getResponse.More {
+		return etcd.GetWithFromKeyChunk(string(cursor.Key), chunkSize, getResponse.Count-int64(len(getResponse.Kvs)), func(resp *clientv3.GetResponse) error {
+			for _, v := range resp.Kvs {
+				if err := callback(v.Key, v.Value); err != nil {
+					return err
+				}
+			}
+			return nil
+		}, sorts...)
+	}
+	return
+}
+
+func (etcd *Etcd) GetWithFromKeyChunk(fromKey string, chunkSize int64, total int64, callback func(*clientv3.GetResponse) error, sorts ...clientv3.SortOrder) (err error) {
+	if total <= 0 {
+		return
+	}
+	var getResponse *clientv3.GetResponse
+	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
+	defer cancelFunc()
+	fmt.Println(`___________________________`, total)
+	limit := chunkSize
+	if limit > total {
+		limit = total
+	}
+	sort := clientv3.SortAscend
+	if len(sorts) > 0 {
+		sort = sorts[0]
+	}
+	if sort != clientv3.SortAscend {
+		panic("etcd.GetWithFromKeyChunk only supports clientv3.SortAscend")
+	}
+	if getResponse, err = etcd.kv.Get(ctx, fromKey,
+		clientv3.WithFromKey(),
+		clientv3.WithSort(clientv3.SortByKey, sort),
+		clientv3.WithLimit(limit)); err != nil {
+		return
+	}
+
+	size := len(getResponse.Kvs)
+	if size == 0 {
+		return
+	}
+	if size == 1 {
+		return callback(getResponse)
+	}
+
+	allFound := int64(size) < chunkSize
+	cursor := *getResponse.Kvs[size-1]
+	if !allFound {
+		getResponse.Kvs = getResponse.Kvs[0 : size-1]
+	}
+
+	err = callback(getResponse)
+	if err != nil {
+		return
+	}
+
+	if allFound || !getResponse.More {
+		return
+	}
+
+	return etcd.GetWithFromKeyChunk(string(cursor.Key), chunkSize, total-int64(len(getResponse.Kvs)), callback, sorts...)
 }
 
 // Put put a key

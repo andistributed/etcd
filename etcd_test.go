@@ -1,10 +1,14 @@
 package etcd
 
 import (
+	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func InitEtcd() *Etcd {
@@ -203,4 +207,42 @@ func TestEtcd_TxKeepaliveWithTTL(t *testing.T) {
 	_ = txResponse.Lease.Close()
 
 	time.Sleep(time.Second * 3)
+}
+
+func TestEtcd_GetWithPrefixKeyChunk(t *testing.T) {
+	etcd := InitEtcd()
+	prefixKey := "/test/big-data/"
+	for i := 0; i < 100; i++ {
+		iStr := strconv.Itoa(i)
+		_, _, err := etcd.PutNotExist(prefixKey+iStr, "echo-value-"+iStr)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+	keys, values, err := etcd.GetWithPrefixKeyLimit("/test/big-data/", 100)
+	if err != nil {
+		t.Error(err)
+	}
+	size := len(keys)
+	vSize := len(values)
+	assert.Equal(t, size, vSize)
+	assert.Equal(t, size, 100)
+
+	var i int
+	etcd.GetWithPrefixKeyChunk(prefixKey, 21, func(key, value []byte) error {
+		i++
+		fmt.Printf("%d. %v  =================> %v\n", i, string(key), string(value))
+		return nil
+	})
+	assert.Equal(t, size, i)
+
+	/* not suppored -------------------
+	i = 0
+	etcd.GetWithPrefixKeyChunk(prefixKey, 21, func(key, value []byte) error {
+		i++
+		fmt.Printf("%d. %v  =================> %v\n", i, string(key), string(value))
+		return nil
+	}, clientv3.SortDescend)
+	assert.Equal(t, size, i)
+	*/
 }
