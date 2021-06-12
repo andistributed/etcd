@@ -77,12 +77,12 @@ func (etcd *Etcd) GetWithPrefixKey(prefixKey string) (keys [][]byte, values [][]
 		return
 	}
 
-	keys = make([][]byte, 0)
-	values = make([][]byte, 0)
+	keys = make([][]byte, len(getResponse.Kvs))
+	values = make([][]byte, len(getResponse.Kvs))
 
-	for i := 0; i < len(getResponse.Kvs); i++ {
-		keys = append(keys, getResponse.Kvs[i].Key)
-		values = append(values, getResponse.Kvs[i].Value)
+	for i, v := range getResponse.Kvs {
+		keys[i] = v.Key
+		values[i] = v.Value
 	}
 
 	return
@@ -102,12 +102,12 @@ func (etcd *Etcd) GetWithPrefixKeyLimit(prefixKey string, limit int64) (keys [][
 		return
 	}
 
-	keys = make([][]byte, 0)
-	values = make([][]byte, 0)
+	keys = make([][]byte, len(getResponse.Kvs))
+	values = make([][]byte, len(getResponse.Kvs))
 
-	for i := 0; i < len(getResponse.Kvs); i++ {
-		keys = append(keys, getResponse.Kvs[i].Key)
-		values = append(values, getResponse.Kvs[i].Value)
+	for i, v := range getResponse.Kvs {
+		keys[i] = v.Key
+		values[i] = v.Value
 	}
 
 	return
@@ -115,14 +115,10 @@ func (etcd *Etcd) GetWithPrefixKeyLimit(prefixKey string, limit int64) (keys [][
 
 // Put put a key
 func (etcd *Etcd) Put(key, value string) (err error) {
-
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
 	defer cancelFunc()
 
-	if _, err = etcd.kv.Put(ctx, key, value); err != nil {
-		return
-	}
-
+	_, err = etcd.kv.Put(ctx, key, value)
 	return
 }
 
@@ -176,29 +172,24 @@ func (etcd *Etcd) Update(key, value, oldValue string) (success bool, err error) 
 }
 
 func (etcd *Etcd) Delete(key string) (err error) {
-
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
 	defer cancelFunc()
 
 	_, err = etcd.kv.Delete(ctx, key)
-
 	return
 }
 
 // DeleteWithPrefixKey delete the keys with prefix key
 func (etcd *Etcd) DeleteWithPrefixKey(prefixKey string) (err error) {
-
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
 	defer cancelFunc()
 
 	_, err = etcd.kv.Delete(ctx, prefixKey, clientv3.WithPrefix())
-
 	return
 }
 
 // Watch watch a key
 func (etcd *Etcd) Watch(key string) (keyChangeEventResponse *etcdresponse.WatchKeyChangeResponse) {
-
 	watcher := clientv3.NewWatcher(etcd.client)
 	watchChans := watcher.Watch(context.Background(), key)
 
@@ -220,7 +211,6 @@ func (etcd *Etcd) Watch(key string) (keyChangeEventResponse *etcdresponse.WatchK
 	End:
 		log.Warn("the watcher lose for key: ", key)
 	}()
-
 	return
 }
 
@@ -245,7 +235,6 @@ func (etcd *Etcd) WatchWithPrefixKey(prefixKey string) (keyChangeEventResponse *
 	End:
 		log.Warn("the watcher lose for prefixKey: ", prefixKey)
 	}()
-
 	return
 }
 
@@ -267,7 +256,6 @@ func (etcd *Etcd) handleKeyChangeEvent(event *clientv3.Event, events chan *etcde
 		changeEvent.Type = etcdevent.KeyDeleteChangeEvent
 	}
 	events <- changeEvent
-
 }
 
 func (etcd *Etcd) TxWithTTL(key, value string, ttl int64) (txResponse *etcdresponse.TxResponse, err error) {
