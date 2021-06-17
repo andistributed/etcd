@@ -13,8 +13,9 @@ var DefaultDir = `/andistributed/etcd/lock/`
 // Lock 分布式锁(TXN事务)
 type Lock struct {
 	// etcd客户端
-	kv    clientv3.KV
-	lease clientv3.Lease
+	client *clientv3.Client
+	kv     clientv3.KV
+	lease  clientv3.Lease
 
 	jobName    string             // 任务名
 	cancelFunc context.CancelFunc // 用于终止自动续租
@@ -23,7 +24,23 @@ type Lock struct {
 	dirName    string
 }
 
-// New 初始化一把锁
+func New(jobName string, config clientv3.Config, dirNames ...string) (*Lock, error) {
+	client, err := clientv3.New(config)
+	if err != nil {
+		return nil, err
+	}
+	return NewWithClient(jobName, client, dirNames...), nil
+}
+
+func NewWithClient(jobName string, client *clientv3.Client, dirNames ...string) (jobLock *Lock) {
+	kv := clientv3.NewKV(client)
+	lease := clientv3.NewLease(client)
+	jobLock = NewWithCustom(jobName, kv, lease, dirNames...)
+	jobLock.client = client
+	return
+}
+
+// NewWithCustom 初始化一把锁
 // usage:
 // * 初始化配置
 // config = clientv3.Config{
@@ -38,8 +55,8 @@ type Lock struct {
 // kv = clientv3.NewKV(client)
 // lease = clientv3.NewLease(client)
 // // watcher = clientv3.NewWatcher(client)
-// New(jobName, kv, lease)
-func New(jobName string, kv clientv3.KV, lease clientv3.Lease, dirNames ...string) (jobLock *Lock) {
+// NewWithCustom(jobName, kv, lease)
+func NewWithCustom(jobName string, kv clientv3.KV, lease clientv3.Lease, dirNames ...string) (jobLock *Lock) {
 	jobLock = &Lock{
 		kv:      kv,
 		lease:   lease,
@@ -139,4 +156,8 @@ func (jobLock *Lock) Unlock() {
 		jobLock.cancelFunc()                                  // 取消我们程序自动续租的协程
 		jobLock.lease.Revoke(context.TODO(), jobLock.leaseID) // 释放租约
 	}
+}
+
+func (jobLock *Lock) Close() error {
+	return jobLock.lease.Close()
 }
