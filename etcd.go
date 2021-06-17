@@ -361,12 +361,22 @@ func (etcd *Etcd) handleKeyChangeEvent(event *clientv3.Event, events chan *etcde
 
 func (etcd *Etcd) TxWithTTL(key, value string, ttl int64) (txResponse *etcdresponse.TxResponse, err error) {
 	var (
-		txnResponse *clientv3.TxnResponse
-		leaseID     clientv3.LeaseID
-		v           []byte
+		txnResponse   *clientv3.TxnResponse
+		grantResponse *clientv3.LeaseGrantResponse
+		leaseID       clientv3.LeaseID
+		v             []byte
 	)
 	lease := clientv3.NewLease(etcd.client)
-	grantResponse, err := lease.Grant(context.Background(), ttl)
+	leaseClose := func() {
+		if leaseErr := lease.Close(); leaseErr != nil {
+			log.Error(leaseErr)
+		}
+	}
+	grantResponse, err = lease.Grant(context.Background(), ttl)
+	if err != nil {
+		leaseClose()
+		return
+	}
 	leaseID = grantResponse.ID
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), etcd.timeout)
@@ -378,7 +388,7 @@ func (etcd *Etcd) TxWithTTL(key, value string, ttl int64) (txResponse *etcdrespo
 		Then(clientv3.OpPut(key, value, clientv3.WithLease(leaseID))).Commit()
 
 	if err != nil {
-		_ = lease.Close()
+		leaseClose()
 		return
 	}
 
@@ -390,7 +400,7 @@ func (etcd *Etcd) TxWithTTL(key, value string, ttl int64) (txResponse *etcdrespo
 		txResponse.Success = true
 	} else {
 		// close the lease
-		_ = lease.Close()
+		leaseClose()
 		v, err = etcd.Get(key)
 		if err != nil {
 			return
@@ -405,15 +415,26 @@ func (etcd *Etcd) TxWithTTL(key, value string, ttl int64) (txResponse *etcdrespo
 func (etcd *Etcd) TxKeepaliveWithTTL(key, value string, ttl int64) (txResponse *etcdresponse.TxResponse, err error) {
 	var (
 		txnResponse    *clientv3.TxnResponse
+		grantResponse  *clientv3.LeaseGrantResponse
 		leaseID        clientv3.LeaseID
 		aliveResponses <-chan *clientv3.LeaseKeepAliveResponse
 		v              []byte
 	)
 	lease := clientv3.NewLease(etcd.client)
-	grantResponse, err := lease.Grant(context.Background(), ttl)
+	leaseClose := func() {
+		if leaseErr := lease.Close(); leaseErr != nil {
+			log.Error(leaseErr)
+		}
+	}
+	grantResponse, err = lease.Grant(context.Background(), ttl)
+	if err != nil {
+		leaseClose()
+		return
+	}
 	leaseID = grantResponse.ID
 
 	if aliveResponses, err = lease.KeepAlive(context.Background(), leaseID); err != nil {
+		leaseClose()
 		return
 	}
 
@@ -440,7 +461,7 @@ func (etcd *Etcd) TxKeepaliveWithTTL(key, value string, ttl int64) (txResponse *
 		).Commit()
 
 	if err != nil {
-		_ = lease.Close()
+		leaseClose()
 		return
 	}
 
@@ -452,7 +473,7 @@ func (etcd *Etcd) TxKeepaliveWithTTL(key, value string, ttl int64) (txResponse *
 		txResponse.Success = true
 	} else {
 		// close the lease
-		_ = lease.Close()
+		leaseClose()
 		txResponse.Success = false
 		if v, err = etcd.Get(key); err != nil {
 			return
@@ -472,13 +493,20 @@ func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txRes
 		grantResponse  *clientv3.LeaseGrantResponse
 	)
 	lease := clientv3.NewLease(etcd.client)
+	leaseClose := func() {
+		if leaseErr := lease.Close(); leaseErr != nil {
+			log.Error(leaseErr)
+		}
+	}
 	grantResponse, err = lease.Grant(context.Background(), ttl)
 	if err != nil {
+		leaseClose()
 		return
 	}
 	leaseID = grantResponse.ID
 
 	if aliveResponses, err = lease.KeepAlive(context.Background(), leaseID); err != nil {
+		leaseClose()
 		return
 	}
 
@@ -513,7 +541,7 @@ func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txRes
 		).Commit()
 
 	if err != nil {
-		_ = lease.Close()
+		leaseClose()
 		return
 	}
 
@@ -522,7 +550,7 @@ func (etcd *Etcd) TxKeepaliveWithTTLAndChan(key, value string, ttl int64) (txRes
 		txResponse.StateChan = make(chan bool)
 	} else {
 		// close the lease
-		_ = lease.Close()
+		leaseClose()
 		txResponse.Success = false
 		if v, err = etcd.Get(key); err != nil {
 			return
