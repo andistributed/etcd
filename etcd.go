@@ -44,6 +44,14 @@ func New(endpoints []string, timeout time.Duration, opts ...etcdconfig.Configer)
 	return
 }
 
+func (etcd *Etcd) Client() *clientv3.Client {
+	return etcd.client
+}
+
+func (etcd *Etcd) KV() clientv3.KV {
+	return etcd.kv
+}
+
 // Get get value from a key
 func (etcd *Etcd) Get(key string) (value []byte, err error) {
 	var getResponse *clientv3.GetResponse
