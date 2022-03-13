@@ -115,11 +115,12 @@ FAIL:
 // Unlock 释放锁
 func (jobLock *Lock) Unlock() {
 	if jobLock.isLocked {
+		jobLock.isLocked = false
 		jobLock.cancelFunc()                                         // 取消我们程序自动续租的协程
 		jobLock.client.Lease.Revoke(context.TODO(), jobLock.leaseID) // 释放租约
 	}
 }
 
 func (jobLock *Lock) Close() error {
-	return jobLock.client.Lease.Close()
+	return jobLock.client.Close()
 }
