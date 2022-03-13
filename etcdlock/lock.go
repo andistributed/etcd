@@ -14,8 +14,6 @@ var DefaultDir = `/andistributed/etcd/lock/`
 type Lock struct {
 	// etcd客户端
 	client *clientv3.Client
-	kv     clientv3.KV
-	lease  clientv3.Lease
 
 	cancelFunc context.CancelFunc // 用于终止自动续租
 	leaseID    clientv3.LeaseID   // 租约ID
@@ -32,33 +30,8 @@ func New(config clientv3.Config, dirNames ...string) (*Lock, error) {
 }
 
 func NewWithClient(client *clientv3.Client, dirNames ...string) (jobLock *Lock) {
-	kv := clientv3.NewKV(client)
-	lease := clientv3.NewLease(client)
-	jobLock = NewWithCustom(kv, lease, dirNames...)
-	jobLock.client = client
-	return
-}
-
-// NewWithCustom 初始化一把锁
-// usage:
-// * 初始化配置
-// config = clientv3.Config{
-// 	Endpoints: []string{"127.0.0.1:2379"}, // 集群地址
-// 	DialTimeout: 5 * time.Second, // 连接超时
-// }
-// * 建立连接
-// if client, err = clientv3.New(config); err != nil {
-// 	return
-// }
-// * 得到KV和Lease的API子集
-// kv = clientv3.NewKV(client)
-// lease = clientv3.NewLease(client)
-// // watcher = clientv3.NewWatcher(client)
-// NewWithCustom(kv, lease)
-func NewWithCustom(kv clientv3.KV, lease clientv3.Lease, dirNames ...string) (jobLock *Lock) {
 	jobLock = &Lock{
-		kv:      kv,
-		lease:   lease,
+		client:  client,
 		dirName: DefaultDir,
 	}
 	if len(dirNames) > 0 && len(dirNames[0]) > 0 {
@@ -81,7 +54,7 @@ func (jobLock *Lock) TryLock(key string) (err error) {
 	)
 
 	// 1, 创建租约(5秒)
-	if leaseGrantResp, err = jobLock.lease.Grant(context.TODO(), 5); err != nil {
+	if leaseGrantResp, err = jobLock.client.Lease.Grant(context.TODO(), 5); err != nil {
 		return
 	}
 
@@ -92,7 +65,7 @@ func (jobLock *Lock) TryLock(key string) (err error) {
 	leaseID = leaseGrantResp.ID
 
 	// 2, 自动续租
-	if keepRespChan, err = jobLock.lease.KeepAlive(cancelCtx, leaseID); err != nil {
+	if keepRespChan, err = jobLock.client.Lease.KeepAlive(cancelCtx, leaseID); err != nil {
 		goto FAIL
 	}
 
@@ -106,7 +79,7 @@ func (jobLock *Lock) TryLock(key string) (err error) {
 	}()
 
 	// 4, 创建事务txn
-	txn = jobLock.kv.Txn(context.TODO())
+	txn = jobLock.client.KV.Txn(context.TODO())
 
 	// 锁路径
 	lockKey = jobLock.dirName + key
@@ -134,19 +107,19 @@ func (jobLock *Lock) TryLock(key string) (err error) {
 	return
 
 FAIL:
-	cancelFunc()                                  // 取消自动续租
-	jobLock.lease.Revoke(context.TODO(), leaseID) //  释放租约
+	cancelFunc()                                         // 取消自动续租
+	jobLock.client.Lease.Revoke(context.TODO(), leaseID) //  释放租约
 	return
 }
 
 // Unlock 释放锁
 func (jobLock *Lock) Unlock() {
 	if jobLock.isLocked {
-		jobLock.cancelFunc()                                  // 取消我们程序自动续租的协程
-		jobLock.lease.Revoke(context.TODO(), jobLock.leaseID) // 释放租约
+		jobLock.cancelFunc()                                         // 取消我们程序自动续租的协程
+		jobLock.client.Lease.Revoke(context.TODO(), jobLock.leaseID) // 释放租约
 	}
 }
 
 func (jobLock *Lock) Close() error {
-	return jobLock.lease.Close()
+	return jobLock.client.Lease.Close()
 }

@@ -11,16 +11,18 @@ import (
 )
 
 func TestLock(t *testing.T) {
-	lk, err := etcdlock.New(clientv3.Config{
-		Endpoints: []string{"127.0.0.1:2379"},
-	})
-	if err != nil {
-		panic(err)
-	}
-	defer lk.Close()
 	var counter int64
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	exec := func(i int) {
+		lk, err := etcdlock.New(clientv3.Config{
+			Endpoints: []string{"127.0.0.1:2379"},
+		})
+		if err != nil {
+			panic(err)
+		}
+		defer lk.Close()
+
 		var j int
 		// LOOP:
 		err = lk.TryLock(`test.lock.1`)
@@ -32,9 +34,12 @@ func TestLock(t *testing.T) {
 			// 	goto LOOP
 			// }
 		} else {
-			counter++
 			lk.Unlock()
+
+			mu.Lock()
+			counter++
 			t.Logf("[%d]free: %v", i, counter)
+			mu.Unlock()
 		}
 	}
 	exec(-1)
